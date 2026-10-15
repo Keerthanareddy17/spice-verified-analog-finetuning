@@ -46,3 +46,20 @@ def import_results_zip(zip_path: Path, dest_dir: Path, overwrite: bool = True) -
             target.write_bytes(z.read(n))
             written.append(target)
     return written
+
+
+def import_results_dir(src_dir: Path, dest_dir: Path) -> list[Path]:
+    """Same as import_results_zip for a folder the browser already unpacked (its name is the run name).
+
+    Only config.json, eval/, logs/ and figures/ are copied; anything else (e.g. weights) is ignored.
+    """
+    src_dir, dest_dir = Path(src_dir), Path(dest_dir)
+    written = []
+    for p in sorted(src_dir.rglob("*")):
+        rel = p.relative_to(src_dir).as_posix()
+        if p.is_file() and _wanted(rel):
+            target = dest_dir / src_dir.name / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(p.read_bytes())
+            written.append(target)
+    return written

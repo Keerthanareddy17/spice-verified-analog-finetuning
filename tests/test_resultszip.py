@@ -27,3 +27,13 @@ def test_import_rejects_unsafe_entries(tmp_path):
             f.writestr(bad, "x")
         with pytest.raises(ValueError):
             import_results_zip(z, tmp_path / "out")
+
+
+def test_import_dir(tmp_path):
+    from analogft.resultszip import import_results_dir
+    src = tmp_path / "r2"
+    for rel in ("config.json", "eval/a.json", "adapter/w.safetensors"):
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        (src / rel).write_text("x")
+    files = import_results_dir(src, tmp_path / "runs")
+    assert len(files) == 2 and not (tmp_path / "runs" / "r2" / "adapter").exists()
