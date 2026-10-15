@@ -5,3 +5,5 @@ trl==1.16.0
 peft==0.21.2
 accelerate==1.15.0
 datasets==5.1.0
+# Colab's preinstalled torchao (0.10.0) is too old for peft 0.21.2 and is not used here: the notebook runs `pip uninstall -y torchao`
+# before installing this file. (Colab torch at the time of writing: 2.11.0+cu130, which these versions ran against up to the LoRA step.)
