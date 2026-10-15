@@ -1,0 +1,20 @@
+{
+  "n_files": 4,
+  "total_bytes": 147007,
+  "files": {
+    "action_effects.csv": {
+      "bytes": 1933,
+      "rows": 14
+    },
+    "cc_sweep.csv": {
+      "bytes": 698,
+      "rows": 8
+    },
+    "figures/cc_sweep_bode.png": {
+      "bytes": 143843
+    },
+    "reference_nominal.json": {
+      "bytes": 533
+    }
+  }
+}

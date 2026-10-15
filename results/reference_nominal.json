@@ -1,0 +1,25 @@
+{
+  "design": {
+    "w_in": 3.7e-06,
+    "l_in": 5e-07,
+    "w_load": 5.7999999999999995e-06,
+    "l_load": 5e-07,
+    "w_cs": 7.9e-05,
+    "l_cs": 5e-07,
+    "l_bias": 5e-07,
+    "ibias": 1.9999999999999998e-05,
+    "tail_ratio": 1.4,
+    "out_ratio": 9.5,
+    "cc": 1e-12
+  },
+  "ngspice_version": "47",
+  "ok": true,
+  "metrics": {
+    "power_w": 0.00043624800000000003,
+    "vout_dc": 0.8999747,
+    "dc_gain_db": 74.2050005907687,
+    "ugf_hz": 27870029.381935954,
+    "pm_deg": 67.76663964701285
+  },
+  "all_saturated": true
+}

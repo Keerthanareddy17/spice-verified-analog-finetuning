@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.venv/
+# OS / editor
+.DS_Store
+.ipynb_checkpoints/
+# Secrets and private context
+.env
+CLAUDE.md
+# Simulation cache (local only)
+.simcache/
+# Model artifacts
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+# data/ and runs/: ignore everything except README, manifest, samples
+data/*
+!data/README.md
+!data/manifest.json
+!data/samples/
+runs/*
+!runs/README.md
+!runs/manifest.json
