@@ -19,6 +19,7 @@ from .actions import ACTION_BY_ID, ACTION_IDS, STEP, apply, available_actions
 from .circuit import Design, KNOBS, nominal_design, simulate_batch_with_stats
 from .circuit.simulator import SimResult
 from .prompting import SYSTEM_PROMPT, format_prompt, format_response
+from .relabel import rank_actions, tied_best
 from .shortfall import METRIC_KEYS, n_unsaturated, unsaturated
 from .specs import Spec, spec_distance
 
@@ -164,11 +165,11 @@ def label_nodes(nodes: list[Node], runner: SimRunner, max_step: int) -> tuple[li
         kid_res = {a.id: next(results) for a in acts}
         d0 = spec_distance(n.result, n.spec)
         outcomes = {a.id: _outcome(kid_res[a.id], n.spec, d0) for a in acts}
-        # best first; ties broken by action id order (stable sort over ACTION_IDS order)
-        ranking = sorted(outcomes, key=lambda a: (-outcomes[a]["improvement"], ACTION_IDS.index(a)))
+        # best first; ties broken by largest margin beyond the spec, then action id order (D16)
+        ranking = rank_actions(outcomes, asdict(n.spec))
         best = ranking[0]
         top = outcomes[best]["improvement"]
-        tied = [a for a in ranking if abs(outcomes[a]["improvement"] - top) < 1e-9]
+        tied = tied_best(outcomes, ranking)
         regions = _regions(n.result)
         rec = {"id": f"{n.start_id}_k{n.step}", "group_id": n.group_id, "start_id": n.start_id,
                "split": None, "step_index": n.step, "spec": asdict(n.spec),
@@ -176,7 +177,7 @@ def label_nodes(nodes: list[Node], runner: SimRunner, max_step: int) -> tuple[li
                "distance": round(d0, 6), "available_actions": [a.id for a in acts],
                "label_action": best, "best_improves": top > 0,
                "label_solves": outcomes[best]["distance_after"] == 0.0,
-               "tied_best": tied if len(tied) > 1 else [], "ranking": ranking,
+               "tied_best": tied, "ranking": ranking,
                "action_outcomes": outcomes}
         before = {"metrics": rec["metrics"], "n_unsat": n_unsaturated(regions),
                   "unsat": unsaturated(regions)}

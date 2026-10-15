@@ -1,6 +1,6 @@
 {
-  "n_files": 4,
-  "total_bytes": 147007,
+  "n_files": 5,
+  "total_bytes": 148561,
   "files": {
     "action_effects.csv": {
       "bytes": 1933,
@@ -12,6 +12,9 @@
     },
     "figures/cc_sweep_bode.png": {
       "bytes": 143843
+    },
+    "phase2_baselines.json": {
+      "bytes": 1554
     },
     "reference_nominal.json": {
       "bytes": 533

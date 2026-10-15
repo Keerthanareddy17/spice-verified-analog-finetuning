@@ -15,7 +15,7 @@ Miller op-amp, Level-1 models (see DECISIONS.md D1). Every label comes from ngsp
    0 failed to simulate, 3 were too far.
    Each start is at most 6 inverse moves from its target.
 4. **Labeling.** For every state all available actions are simulated; improvement = distance_before - distance_after;
-   label = best action (ties: lowest action-id order). Then the greedy best action is followed for up to
+   label = best action (ties: the action whose result has the largest margin beyond the spec, then action-id order; DECISIONS D16). Then the greedy best action is followed for up to
    3 more steps (stopping when the spec is met or nothing improves), labeling each visited state.
 5. **Splits** by target (group_id), 80/10/10, seed 0; asserted leak-free.
 
@@ -28,24 +28,24 @@ Miller op-amp, Level-1 models (see DECISIONS.md D1). Every label comes from ngsp
 ## Label distribution (best action)
 | action | count | share |
 |---|---|---|
-| ibias_down | 1097 | 29.8% |
-| cc_down | 1006 | 27.3% |
-| cc_up | 543 | 14.8% |
-| w_in_up | 248 | 6.7% |
-| ibias_up | 167 | 4.5% |
-| out_ratio_down | 164 | 4.5% |
-| w_cs_up | 127 | 3.5% |
-| l_in_up | 90 | 2.4% |
-| l_load_down | 56 | 1.5% |
-| w_in_down | 55 | 1.5% |
-| l_in_down | 50 | 1.4% |
-| l_load_up | 35 | 1.0% |
-| out_ratio_up | 34 | 0.9% |
-| w_cs_down | 7 | 0.2% |
+| ibias_down | 1007 | 27.4% |
+| cc_down | 945 | 25.7% |
+| cc_up | 435 | 11.8% |
+| out_ratio_down | 233 | 6.3% |
+| w_in_up | 228 | 6.2% |
+| w_cs_up | 173 | 4.7% |
+| ibias_up | 152 | 4.1% |
+| l_in_up | 144 | 3.9% |
+| l_in_down | 133 | 3.6% |
+| out_ratio_up | 68 | 1.8% |
+| l_load_down | 61 | 1.7% |
+| w_in_down | 52 | 1.4% |
+| l_load_up | 38 | 1.0% |
+| w_cs_down | 10 | 0.3% |
 
-Most frequent label share: **29.8%** (imbalanced).
+Most frequent label share: **27.4%** (imbalanced).
 Ties for best action: 27.5% of states (98% of those ties are several actions that each fully solve the spec); the stored
-label is the lowest action id among them, so **use tie-aware scoring** (`analogft.evaluation`).
+label is the most robust of them (largest margin), but any tied action is equally good, so **use tie-aware scoring** (`analogft.evaluation`).
 
 ## Quality numbers
 - States whose best action improves spec distance (`best_improves`): **99.3%**.
@@ -78,16 +78,16 @@ Majority action (most frequent train label): `ibias_down`. Random is the exact e
 | baseline | valid | top-1 (tie-aware) | top-1 (exact id) | top-3 | improve rate | mean regret |
 |---|---|---|---|---|---|---|
 | random | 1.000 | 0.114 | 0.073 | 0.232 | 0.381 | 0.219 |
-| majority | 1.000 | 0.296 | 0.296 | 0.357 | 0.413 | 0.097 |
-| textbook rules | 1.000 | 0.439 | 0.315 | 0.733 | 0.868 | 0.058 |
+| majority | 1.000 | 0.296 | 0.262 | 0.357 | 0.413 | 0.097 |
+| textbook rules | 1.000 | 0.439 | 0.254 | 0.733 | 0.868 | 0.058 |
 
 **Test** (n=375)
 
 | baseline | valid | top-1 (tie-aware) | top-1 (exact id) | top-3 | improve rate | mean regret |
 |---|---|---|---|---|---|---|
 | random | 1.000 | 0.117 | 0.073 | 0.232 | 0.406 | 0.232 |
-| majority | 1.000 | 0.325 | 0.325 | 0.389 | 0.464 | 0.092 |
-| textbook rules | 1.000 | 0.440 | 0.291 | 0.768 | 0.904 | 0.070 |
+| majority | 1.000 | 0.325 | 0.304 | 0.389 | 0.464 | 0.092 |
+| textbook rules | 1.000 | 0.440 | 0.261 | 0.768 | 0.904 | 0.070 |
 
 ## Files (data/phase2/)
 `train|val|test.jsonl` (one labeled state per line: id, group_id, split, step_index, spec, design, metrics, regions,

@@ -30,3 +30,4 @@ data/*
 runs/*
 !runs/README.md
 !runs/manifest.json
+.venv*/

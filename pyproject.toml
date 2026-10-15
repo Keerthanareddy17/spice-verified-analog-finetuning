@@ -7,10 +7,11 @@ name = "analogft"
 version = "0.1.0"
 description = "Simulator-verified fine-tuning of a small model for analog op-amp design"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas", "matplotlib", "python-dotenv", "pytest"]
+dependencies = ["numpy", "pandas", "matplotlib", "python-dotenv", "pytest", "requests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

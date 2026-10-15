@@ -96,3 +96,47 @@ Compute each normalized shortfall in the same units as the spec distance (`short
 - Split by target (group_id) 80/10/10 with a seeded permutation: 480/60/60 targets. All states and episodes of a target stay together; asserted in the build and tested.
 - Pilot output goes to data/phase2_pilot/ (never pushed); the real dataset to data/phase2/. All settings live in configs/phase2.json (seed 0).
 - Starts are simulated in one batch for all targets (an earlier version created a process pool per target, which was far slower).
+
+# Phase 3 decisions
+
+## D16. Tie-break for the training label: largest margin beyond the spec
+- **Problem:** 27.5% of states have several equally good best actions (98% of them each fully solve the spec). The label was the lowest action id, which favors cc_down/ibias_down for no physical reason, and a model trained on it learns "when unsure, say ibias_down".
+- **Options:** (a) keep id order; (b) random among ties; (c) the tied action whose resulting design has the largest margin beyond the spec; (d) drop tied states.
+- **Chosen: (c), then id order if margins are also tied.** margin = min over the 4 specs of the normalized slack after the action, in the same units as spec_distance (gain dB/10, UGF and power in decades, PM deg/15; `shortfall.slack_terms`). It prefers a robust fix over one that squeaks over the line, like a designer would, and it is deterministic and computed from the stored `action_outcomes` (no new simulation). (b) would add noise; (d) would throw away the 27.5% of states where the model most needs to learn "any solving move is fine".
+- **Applied by** `scripts/relabel_dataset.py` (checks: a label only changes among tied actions; every unchanged label regenerates a byte-identical assistant message). `dataset.label_nodes` uses the same rule for future builds. Ranking order, `tied_best`, `label_solves`, the assistant message and its reason are all regenerated.
+- **Known limitation:** the later states of an episode (step 1-3) were reached by following the OLD greedy action. Their labels are valid for their own states; only the choice of which states exist reflects the old tie-break. Phase 4 samples fresh trajectories anyway.
+- **Result:** 370 of 1012 tied states changed label. Tie-aware metrics did not change (as they should not); exact-id metrics did. Tie-aware scoring stays the headline metric. See the Step 0 table in the Phase 3 write-up.
+
+## D17. Eval subset
+- 150 of the 375 test examples, seeded (0), stratified by step_index with proportional allocation (largest remainder), ids in `results/phase3/eval_subset_ids.json`. Reason: the Groq free tier cannot score 375 reasoning-model calls per day, and all methods must be compared on the identical examples. Every method is scored on the subset AND the full test split (except Groq: subset only). Cost: wider CIs on the subset (n=150), reported.
+- Groq examples run in a fixed shuffled order, so if a daily cap stopped a run early the scored examples would still be an unbiased sample.
+
+## D18. Large-model baseline: openai/gpt-oss-120b (main), qwen/qwen3.8-27b (optional)
+- The research question is whether a small specialist beats a large general model, so the baseline must be the strongest general open-weight model available on Groq. gpt-oss-120b is a reasoning model, production status on Groq and open-weight (reproducible). Run at its medium reasoning effort (not low), so it is not a strawman.
+- Qwen3.8-27B (preview) is the same family as the small Qwen but ~50x larger and untrained on our data, so it isolates "size vs specialization". It was run in its default mode (no reasoning-effort parameter sent; it does not emit reasoning tokens in that mode).
+- Fairness: identical SYSTEM_PROMPT + user message as the small models (`predict.build_messages`), temperature 0, only the final message `content` is parsed (reasoning is returned separately), `max_completion_tokens=2048` so reasoning cannot cut off the JSON; truncations are counted. Responses are cached on disk by (model, example id).
+- Both model ids were confirmed present in the key's model list before any run.
+
+## D19. Small model: Qwen2.5-0.5B/1.5B-Instruct instead of Qwen3-0.6B/1.7B (deviation from the original plan)
+- Qwen3's chat template has a "thinking mode" (`<think>` blocks) that complicates both training targets and output parsing. Qwen2.5-Instruct has a plain, stable template, mature TRL/PEFT support, and fits a free T4. First run 0.5B, main run 1.5B if time allows.
+
+## D20. Fine-tuning setup
+- **LoRA** r=16, alpha=32, dropout 0.05 on all attention and MLP projections (q,k,v,o,gate,up,down). Why: the task is narrow (pick 1 of <=14 labels and a one-line reason), so a small adapter is enough; targeting all linear layers is the standard setting that matches full fine-tuning more closely than attention-only.
+- **Optimization:** lr 2e-4 (typical for LoRA), cosine decay, 5% warmup, 2 epochs, effective batch 16, seed 0. 2926 train examples / 16 = 183 steps per epoch, 366 steps total. Log every 10 steps, evaluate on val every 50, checkpoint every 50.
+- **fp16 mixed precision, not bf16:** the T4 (Turing) has no bf16. Base weights are loaded in fp16, LoRA weights are kept in fp32 by PEFT, and the Trainer uses fp16 autocast with loss scaling. fp16 can overflow, so before training one forward pass checks that the loss is finite; if not, it automatically reloads in fp32 (slower, 2x memory, still fits). A NaN in the logged training loss fails the run loudly.
+- **Loss on the reply only:** prompt/completion dataset format with `completion_only_loss=True`. Verified by printing the tokens that carry loss for one example (exactly the JSON reply + `<|im_end|>`; the whole prompt is masked).
+- **max_length 640, not 512 (deviation found by the smoke test):** the plan assumed 512 from the 4-chars-per-token estimate. Real Qwen token counts are prompt 428-502, reply 38-49, full conversation up to 550 tokens; with 512, 84% of examples (3104 of 3679) would have lost the end of the reply. `train()` now asserts that the longest example fits. Padding is per batch, so the larger limit costs nothing.
+- **Generation:** greedy, max_new_tokens 64 (replies are at most 49 tokens), same chat template as training.
+- **Compute plan:** resumable from `runs/phase3/<run>/checkpoints/` on Drive (save_total_limit 2). Checkpoints are kept separate from eval outputs so metrics can be pulled to the Mac without weights (`sync_drive.sh pull runs --metrics-only`).
+
+## D21. Library versions
+- Pinned in `requirements-colab.txt`: transformers 5.20.0, trl 1.16.0, peft 0.21.2, accelerate 1.15.0, datasets 5.1.0 (torch 2.14.1 locally; Colab keeps its own torch). Verified together by the local smoke test. API notes that cost time and are encoded in the code: transformers 5 renamed `torch_dtype` to `dtype` and replaced `warmup_ratio` by `warmup_steps` (a float below 1 is a ratio); TRL 1.x tokenizes inside the trainer and exposes `labels` with -100 on the prompt.
+- Local note: the editable-install `.pth` file in `.venv/` repeatedly gets the macOS "hidden" flag, which makes Python 3.13+ ignore it (`chflags nohidden` fixes it). To not depend on it, `pyproject.toml` sets `pythonpath = ["src"]` for pytest and `sync_drive.sh` exports `PYTHONPATH`.
+
+## D22. Statistics
+- 95% CIs are percentile bootstrap intervals over states (2000 resamples, seed 0) of the per-state score, for tie-aware top-1, improvement rate and mean regret. For `random` the per-state score is its exact expectation. Methods are compared on the same states, so overlapping intervals are only a rough guide; a paired test would be tighter and is a possible follow-up.
+
+### D18 observed results (Groq, 150-example eval subset)
+- Limits read from response headers: 8,000 tokens/min and 1,000 requests/day per model (the 200K tokens/day figure is not exposed in headers; gpt-oss used ~159K, within it).
+- gpt-oss-120b (medium effort): ~1060 tokens/example (498 prompt + 562 completion, of which ~520 reasoning), 1.6 s/call, 2 of 150 outputs truncated at 2048 tokens (reasoning ran out the budget, empty answer, scored invalid). ~45 minutes wall time because of the per-minute cap.
+- qwen3.8-27b (default, no reasoning): ~541 tokens/example, 0 truncated, 100% valid.

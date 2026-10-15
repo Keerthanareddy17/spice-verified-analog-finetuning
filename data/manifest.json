@@ -1,12 +1,12 @@
 {
   "n_files": 9,
-  "total_bytes": 23010131,
+  "total_bytes": 23012745,
   "files": {
     "README.md": {
       "bytes": 160
     },
     "phase2/build_stats.json": {
-      "bytes": 3491
+      "bytes": 3566
     },
     "phase2/episodes_test.jsonl": {
       "bytes": 184973,
@@ -21,19 +21,19 @@
       "rows": 176
     },
     "phase2/test.jsonl": {
-      "bytes": 2143455,
+      "bytes": 2143659,
       "rows": 375
     },
     "phase2/train.jsonl": {
-      "bytes": 16796074,
+      "bytes": 16798166,
       "rows": 2926
     },
     "phase2/val.jsonl": {
-      "bytes": 2161771,
+      "bytes": 2162012,
       "rows": 378
     },
     "samples/phase2_examples.jsonl": {
-      "bytes": 29135,
+      "bytes": 29137,
       "rows": 5
     }
   }

@@ -56,3 +56,72 @@ def evaluate(records: list[dict], picks: list[str | None]) -> dict:
 def evaluate_random(records: list[dict]) -> dict:
     """Exact expectation of a uniform-random pick over each state's available actions."""
     return _aggregate([[score_pick(r, a) for a in r["available_actions"]] for r in records])
+
+
+# ----- per-state scores, confidence intervals and error analysis (Phase 3) ---------------
+
+import math
+import random
+
+from .shortfall import n_unsaturated, shortfall_terms
+
+HEADLINE = ("top1", "improve_rate", "mean_regret")
+SCORE_KEYS = {"valid": "valid_rate", "top1": "top1", "top1_exact": "top1_exact", "top3": "top3",
+              "improves": "improve_rate", "regret": "mean_regret"}
+
+
+def per_state_scores(records: list[dict], picks: list[str | None]) -> list[dict]:
+    """One dict of float scores per state (keys of SCORE_KEYS values)."""
+    assert len(records) == len(picks)
+    return [{SCORE_KEYS[k]: float(v) for k, v in score_pick(r, p).items()} for r, p in zip(records, picks)]
+
+
+def per_state_scores_random(records: list[dict]) -> list[dict]:
+    """Expected scores of a uniform-random pick, per state."""
+    out = []
+    for r in records:
+        per = [score_pick(r, a) for a in r["available_actions"]]
+        out.append({SCORE_KEYS[k]: _mean([float(x[k]) for x in per]) for k in SCORE_KEYS})
+    return out
+
+
+def summarize_scores(rows: list[dict], n_boot: int = 2000, seed: int = 0) -> dict:
+    """Mean of each score, plus a bootstrap 95% CI (resampling states) for the headline metrics.
+
+    Result: {"n", <metric>: mean, ..., "ci": {metric: [lo, hi]}}.
+    """
+    n = len(rows)
+    out: dict = {"n": n}
+    cols = list(SCORE_KEYS.values())
+    for c in cols:
+        out[c] = _mean([r[c] for r in rows])
+    rng = random.Random(seed)
+    boots = {c: [] for c in HEADLINE}
+    for _ in range(n_boot if n else 0):
+        sample = [rows[rng.randrange(n)] for _ in range(n)]
+        for c in HEADLINE:
+            boots[c].append(sum(r[c] for r in sample) / n)
+    out["ci"] = {}
+    for c, xs in boots.items():
+        xs.sort()
+        out["ci"][c] = [xs[int(0.025 * len(xs))], xs[min(len(xs) - 1, int(0.975 * len(xs)))]] if xs else [math.nan] * 2
+    return out
+
+
+def largest_shortfall(record: dict) -> str:
+    """Which part of the spec is furthest off: gain, ugf, pm, power or sat (device out of saturation)."""
+    terms = shortfall_terms(record["spec"], record["metrics"], n_unsaturated(record["regions"]))
+    return max(terms, key=terms.get)
+
+
+def breakdown(records: list[dict], rows: list[dict], by: str) -> dict:
+    """Mean scores per group. `by` is "step_index" or "largest_shortfall". Includes n per group."""
+    groups: dict = {}
+    for r, s in zip(records, rows):
+        key = str(r["step_index"]) if by == "step_index" else largest_shortfall(r)
+        groups.setdefault(key, []).append(s)
+    out = {}
+    for key in sorted(groups):
+        g = groups[key]
+        out[key] = {"n": len(g), **{c: _mean([x[c] for x in g]) for c in SCORE_KEYS.values()}}
+    return out

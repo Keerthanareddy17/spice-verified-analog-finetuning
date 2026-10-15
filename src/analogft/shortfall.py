@@ -38,3 +38,24 @@ def n_unsaturated(regions: dict[str, bool]) -> int:
 
 def unsaturated(regions: dict[str, bool]) -> list[str]:
     return [d for d, s in regions.items() if not s]
+
+
+def slack_terms(spec: dict, metrics: dict) -> dict[str, float]:
+    """Margin beyond each spec in the same units as `shortfall_terms` (positive = passes with room).
+
+    gain: dB/10, ugf and power: decades, pm: deg/15. Saturation is not included (it is
+    pass/fail and already part of the distance). Missing metrics give -inf for every term.
+    """
+    if not has_all_metrics(metrics):
+        return {k: -math.inf for k in ("gain", "ugf", "pm", "power")}
+    return {
+        "gain": (metrics["dc_gain_db"] - spec["gain_db_min"]) / 10.0,
+        "ugf": math.log10(metrics["ugf_hz"] / spec["ugf_hz_min"]),
+        "pm": (metrics["pm_deg"] - spec["pm_deg_min"]) / 15.0,
+        "power": math.log10(spec["power_w_max"] / metrics["power_w"]),
+    }
+
+
+def margin(spec: dict, metrics: dict) -> float:
+    """Smallest normalized slack across the four specs: how robustly a design passes."""
+    return min(slack_terms(spec, metrics).values())

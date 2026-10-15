@@ -65,7 +65,7 @@ Miller op-amp, Level-1 models (see DECISIONS.md D1). Every label comes from ngsp
    {st['start_rejected']['failed_sim']} failed to simulate, {st['start_rejected']['too_far']} were too far.
    Each start is at most {cfg['k_total_max']} inverse moves from its target.
 4. **Labeling.** For every state all available actions are simulated; improvement = distance_before - distance_after;
-   label = best action (ties: lowest action-id order). Then the greedy best action is followed for up to
+   label = best action (ties: the action whose result has the largest margin beyond the spec, then action-id order; DECISIONS D16). Then the greedy best action is followed for up to
    {cfg['extra_steps']} more steps (stopping when the spec is met or nothing improves), labeling each visited state.
 5. **Splits** by target (group_id), 80/10/10, seed {cfg['seed']}; asserted leak-free.
 
@@ -80,7 +80,7 @@ Miller op-amp, Level-1 models (see DECISIONS.md D1). Every label comes from ngsp
 
 Most frequent label share: **{100 * s['top_label_fraction']:.1f}%**{' (imbalanced)' if s['top_label_fraction'] > 0.25 else ''}.
 Ties for best action: {100 * s['tie_fraction']:.1f}% of states ({100 * tie_solve:.0f}% of those ties are several actions that each fully solve the spec); the stored
-label is the lowest action id among them, so **use tie-aware scoring** (`analogft.evaluation`).
+label is the most robust of them (largest margin), but any tied action is equally good, so **use tie-aware scoring** (`analogft.evaluation`).
 
 ## Quality numbers
 - States whose best action improves spec distance (`best_improves`): **{100 * s['best_improves_fraction']:.1f}%**.

@@ -1,0 +1,7 @@
+# Phase 3 fine-tuning libraries. torch is NOT listed: Colab ships its own CUDA build, never reinstall it.
+# These exact versions were verified together locally (see docs/DECISIONS.md D21); Colab installs them in the notebook.
+transformers==5.20.0
+trl==1.16.0
+peft==0.21.2
+accelerate==1.15.0
+datasets==5.1.0
