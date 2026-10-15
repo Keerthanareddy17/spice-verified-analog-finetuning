@@ -35,7 +35,7 @@ def _load_dotenv() -> None:
 
 
 def _find_drive_local_dir() -> Path | None:
-    """Locate the Google Drive for desktop copy of the project folder (Mac only)."""
+    """Locate an optional Google Drive for desktop copy of the project folder (Mac only; not needed anymore)."""
     override = os.environ.get("DRIVE_LOCAL_DIR")
     if override:
         return Path(override).expanduser()
@@ -59,8 +59,9 @@ def _resolve_storage_root() -> Path:
 
 
 _load_dotenv()
-STORAGE_ROOT: Path = _resolve_storage_root()
-DATA_DIR: Path = STORAGE_ROOT / "data"
+STORAGE_ROOT: Path = _resolve_storage_root()  # where runs/ and results/ live (Drive on Colab, the repo locally)
+# Data comes with the repo (committed to git, DECISIONS D23), also on Colab: the cloned repo is an exact snapshot.
+DATA_DIR: Path = (STORAGE_ROOT if os.environ.get("ANALOGFT_STORAGE_ROOT") else REPO_ROOT) / "data"
 RUNS_DIR: Path = STORAGE_ROOT / "runs"
 RESULTS_DIR: Path = STORAGE_ROOT / "results"
 FIGURES_DIR: Path = RESULTS_DIR / "figures"

@@ -2,6 +2,7 @@
 # Sync data/, runs/ or results/ between this repo and Google Drive for desktop.
 # Usage: scripts/sync_drive.sh push|pull data|runs|results [--dry-run] [--metrics-only]
 # --metrics-only (runs): skip checkpoints/, adapter/ and weight files; copy eval/, logs/, figures/ and configs only.
+# NOTE: the Drive desktop app is optional now (DECISIONS D23); without it this script explains the zip route and exits.
 # Never uses --delete: nothing is ever removed on either side.
 set -euo pipefail
 
@@ -33,9 +34,11 @@ if [[ -z "${DRIVE_LOCAL_DIR:-}" ]]; then
   done
 fi
 if [[ -z "${DRIVE_LOCAL_DIR:-}" || ! -d "$DRIVE_LOCAL_DIR" ]]; then
-  echo "Could not find the Google Drive for desktop folder."
-  echo "Expected: ~/Library/CloudStorage/GoogleDrive-<email>/My Drive/$PROJECT"
-  echo "Create that folder in Drive, or set DRIVE_LOCAL_DIR=/full/path in .env."
+  echo "Drive desktop app not installed (no Google Drive for desktop folder found); use the zip download route:"
+  echo "  data    -> committed to git (data/phase2/*.jsonl), Colab gets it from the clone"
+  echo "  results -> the notebook writes <run>_results.zip to Drive; download it from drive.google.com, then run"
+  echo "             python scripts/import_results_zip.py ~/Downloads/<run>_results.zip"
+  echo "(Optional: if you reinstall the app, set DRIVE_LOCAL_DIR=/full/path in .env and this script works again.)"
   exit 1
 fi
 

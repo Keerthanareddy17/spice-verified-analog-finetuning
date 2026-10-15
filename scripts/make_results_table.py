@@ -1,7 +1,7 @@
 """Build results/phase3_results.md and results/phase3_results.json from pulled runs and committed Groq results.
 
 Usage: python scripts/make_results_table.py [--runs qwen25_05b_lora [qwen25_15b_lora ...]]
-Needs runs/phase3/<run>/eval/ on the Mac (scripts/sync_drive.sh pull runs --metrics-only).
+Needs runs/phase3/<run>/eval/ on the Mac (python scripts/import_results_zip.py <downloaded zip>).
 """
 import argparse
 import json
@@ -35,7 +35,7 @@ def main() -> None:
     for run in args.runs:
         rd = paths.RUNS_DIR / "phase3" / run
         if not (rd / "config.json").exists():
-            print(f"(skipping {run}: not found in {rd}; pull it with scripts/sync_drive.sh pull runs --metrics-only)")
+            print(f"(skipping {run}: not found in {rd}; download <run>_results.zip from Drive and run scripts/import_results_zip.py)")
             continue
         tag = short_model(rd)
         subset_methods.update(run_methods(rd, "subset", prefix=f"{tag} "))

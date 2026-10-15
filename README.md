@@ -45,6 +45,6 @@ pytest
 python scripts/simulate_one.py      # nominal design report
 python scripts/explore_cc.py        # Cc sweep: table, figure, CSV
 python scripts/explore_actions.py   # what each of the 14 actions does
-scripts/sync_drive.sh push results  # optional: sync to Google Drive for desktop
+# data/phase2 is committed to git; Colab results come back as a zip: python scripts/import_results_zip.py <zip>
 ```
 Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md). `notebooks/00_colab_bootstrap.ipynb` checks Colab's ngspice against the Mac's.

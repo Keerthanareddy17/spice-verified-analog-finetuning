@@ -1,0 +1,161 @@
+{
+  "config": {
+    "seed": 0,
+    "n_targets": 600,
+    "starts_per_target": 3,
+    "start_oversample": 2.0,
+    "target_range": 3.0,
+    "target_min_pm": 50.0,
+    "k_range": 3,
+    "k_total_min": 2,
+    "k_total_max": 6,
+    "max_start_distance": 5.0,
+    "extra_steps": 3,
+    "split_fractions": [
+      0.8,
+      0.1,
+      0.1
+    ],
+    "out_name": "phase2",
+    "workers": null
+  },
+  "n_targets": 600,
+  "target_candidates": 1133,
+  "start_candidates": 3600,
+  "start_rejected": {
+    "failed_sim": 0,
+    "already_pass": 797,
+    "too_far": 3
+  },
+  "n_episodes": 1758,
+  "n_records": 3679,
+  "unique_simulations": 55236,
+  "cache_hits": 5131,
+  "simulation_seconds": 250.8,
+  "total_seconds": 252.6,
+  "groups_per_split": {
+    "train": 480,
+    "val": 60,
+    "test": 60
+  },
+  "summary": {
+    "n_states": 3679,
+    "n_episodes": 1758,
+    "states_per_split": {
+      "train": 2926,
+      "val": 378,
+      "test": 375
+    },
+    "episodes_per_split": {
+      "train": 1408,
+      "val": 176,
+      "test": 174
+    },
+    "groups_per_split": {
+      "train": 480,
+      "val": 60,
+      "test": 60
+    },
+    "label_counts": {
+      "ibias_down": 1007,
+      "cc_down": 945,
+      "cc_up": 435,
+      "out_ratio_down": 233,
+      "w_in_up": 228,
+      "w_cs_up": 173,
+      "ibias_up": 152,
+      "l_in_up": 144,
+      "l_in_down": 133,
+      "out_ratio_up": 68,
+      "l_load_down": 61,
+      "w_in_down": 52,
+      "l_load_up": 38,
+      "w_cs_down": 10
+    },
+    "top_label_fraction": 0.2737156836096765,
+    "best_improves_fraction": 0.9926610491981517,
+    "label_solves_fraction": 0.44495786898613754,
+    "tie_fraction": 0.2750747485729818,
+    "step_index_counts": {
+      "0": 1758,
+      "1": 1088,
+      "2": 586,
+      "3": 247
+    },
+    "distance": {
+      "min": 5e-06,
+      "p5": 0.0095922,
+      "p25": 0.04911,
+      "median": 0.139458,
+      "p75": 0.3469065,
+      "p95": 1.2089661999999994,
+      "max": 4.143095,
+      "mean": 0.2931669839630334
+    },
+    "start_distance": {
+      "min": 5e-06,
+      "p5": 0.01696195,
+      "p25": 0.08304025000000001,
+      "median": 0.21054,
+      "p75": 0.5150465,
+      "p95": 1.425441749999999,
+      "max": 4.143095,
+      "mean": 0.390536582480091
+    },
+    "actions_per_state": {
+      "min": 11.0,
+      "p5": 13.0,
+      "p25": 14.0,
+      "median": 14.0,
+      "p75": 14.0,
+      "p95": 14.0,
+      "max": 14.0,
+      "mean": 13.73307964120685
+    },
+    "improvement_all_actions": {
+      "min": -4.64101,
+      "p5": -0.2967045,
+      "p25": -0.10835225,
+      "median": -0.002261,
+      "p75": 0.0341185,
+      "p95": 0.18948464999999992,
+      "max": 2.609628,
+      "mean": -0.03871454023830259
+    },
+    "failed_sim_action_fraction": 0.0,
+    "unsaturated_action_fraction": 0.08560288179874911,
+    "improving_action_fraction": 0.3980880373683794,
+    "user_tokens": {
+      "min": 218.0,
+      "p5": 243.0,
+      "p25": 256.0,
+      "median": 258.0,
+      "p75": 262.0,
+      "p95": 266.0,
+      "max": 269.0,
+      "mean": 256.095406360424
+    },
+    "system_plus_user_tokens": {
+      "min": 291.0,
+      "p5": 315.0,
+      "p25": 328.0,
+      "median": 330.0,
+      "p75": 334.0,
+      "p95": 339.0,
+      "max": 342.0,
+      "mean": 328.6028812177222
+    },
+    "assistant_tokens": {
+      "min": 24.0,
+      "p5": 26.0,
+      "p25": 28.0,
+      "median": 29.0,
+      "p75": 31.0,
+      "p95": 34.0,
+      "max": 36.0,
+      "mean": 29.216906768143517
+    },
+    "assistant_words_max": 16
+  },
+  "tie_break": "largest margin beyond spec, then action id order (D16)"
+}

@@ -22,11 +22,15 @@ CLAUDE.md
 *.pth
 *.ckpt
 *.gguf
-# data/ and runs/: ignore everything except README, manifest, samples
+# data/ and runs/: ignore everything except README, manifest, samples and the Phase 2 dataset (D23)
 data/*
 !data/README.md
 !data/manifest.json
 !data/samples/
+!data/phase2/
+data/phase2/*
+!data/phase2/*.jsonl
+!data/phase2/build_stats.json
 runs/*
 !runs/README.md
 !runs/manifest.json
