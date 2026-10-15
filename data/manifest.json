@@ -1,0 +1,40 @@
+{
+  "n_files": 9,
+  "total_bytes": 23010131,
+  "files": {
+    "README.md": {
+      "bytes": 160
+    },
+    "phase2/build_stats.json": {
+      "bytes": 3491
+    },
+    "phase2/episodes_test.jsonl": {
+      "bytes": 184973,
+      "rows": 174
+    },
+    "phase2/episodes_train.jsonl": {
+      "bytes": 1503322,
+      "rows": 1408
+    },
+    "phase2/episodes_val.jsonl": {
+      "bytes": 187750,
+      "rows": 176
+    },
+    "phase2/test.jsonl": {
+      "bytes": 2143455,
+      "rows": 375
+    },
+    "phase2/train.jsonl": {
+      "bytes": 16796074,
+      "rows": 2926
+    },
+    "phase2/val.jsonl": {
+      "bytes": 2161771,
+      "rows": 378
+    },
+    "samples/phase2_examples.jsonl": {
+      "bytes": 29135,
+      "rows": 5
+    }
+  }
+}

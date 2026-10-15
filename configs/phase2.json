@@ -1,0 +1,15 @@
+{
+  "seed": 0,
+  "n_targets": 600,
+  "starts_per_target": 3,
+  "start_oversample": 2.0,
+  "target_range": 3.0,
+  "target_min_pm": 50.0,
+  "k_range": 3,
+  "k_total_min": 2,
+  "k_total_max": 6,
+  "max_start_distance": 5.0,
+  "extra_steps": 3,
+  "split_fractions": [0.8, 0.1, 0.1],
+  "out_name": "phase2"
+}

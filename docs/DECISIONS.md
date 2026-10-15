@@ -56,3 +56,43 @@ Format: decision, options considered, why, trade-off.
 ## D9. Drive sync
 - `rsync -av` without `--delete`, between the repo folder and the Drive for desktop folder. Manifest (names, sizes, rows) is written before each push; the Colab bootstrap notebook compares sizes against it to detect an unfinished upload.
 - `.gitignore` uses `.simcache/` for the local cache; `CLAUDE.md` and `.env` are ignored.
+
+# Phase 2 decisions
+
+## D10. Targets, specs and start states
+- **Targets:** each of the 11 knobs log-uniform in [nominal/3, nominal*3] clipped to bounds (realistic amplifiers, not the full bounds); kept if ok, all saturated, PM >= 50. Yield 600/1133 = 53%.
+- **Spec from the target's own metrics with slack** (gain -U(0,3) dB, UGF x U(0.75,0.95), PM -U(0,10) clamped [45,70], power x U(1.05,1.3)). Values are rounded *toward slack* (floor for minimums, ceil for the power maximum) at 0.1 dB / 10 kHz / 0.1 deg / 1 uW so the prompt shows exactly the number used for scoring and the target still passes (asserted for every target).
+- **Start states:** only the 7 action knobs move, by 1.3^k with k in [-3,3], total |k| in [2,6]. Rejection sampling also requires that **no perturbed knob hits a bound**; otherwise clipping would move the start off the lattice and the inverse moves would not recover the target (checked by a test that applies real inverse actions). Trade-off: starts are slightly biased away from the bounds.
+- **Filter:** sim ran, spec_distance in (0, 5]. This answers the D7 concern: the farthest start is 4.14, and 3 of 3600 candidates were rejected as too far. 797 of 3600 candidates (22%) already met the spec because of the slack, so I sample 2x candidates per wanted start (3 per target). 42 starts short of 1800 because a few targets had too few failing candidates.
+- **Duplicates:** states that converge to the same design inside one target are labeled once (first occurrence).
+
+## D11. Labeling and the tie problem
+- Every available action is simulated from each state (about 15 sims per labeled state, including the 1-in-N cost of the next state's children), `improvement = distance_before - distance_after`. Failed or unsaturated outcomes get their natural distance, so they rank last, not silently dropped.
+- **Greedy trajectory:** after labeling a state, apply the best action if it improves and the result still fails the spec, up to 3 more steps. Later steps are the states an agent would actually see (step 0: 1758, 1: 1088, 2: 586, 3: 247).
+- **Ties:** per the plan, ties break by action-id order (deterministic) and are recorded in `tied_best`. Observed: **27.5% of states have a tie, and 98% of those are several actions that each fully solve the spec** (all improvement = distance_before). The exact-id label is then arbitrary and biased toward early ids (cc_down and ibias_down are 35% and 27% of tied labels). Decision: **top-1 and top-3 are tie-aware** (a pick that matches the best improvement is correct; rank = 1 + number of strictly better actions), and `top1_exact` is reported next to it. Trade-off: the training label is still the lowest id among ties; this is a mild label-noise/bias source that Phase 3 should keep in mind (an option later is to choose among tied solvers at random or by largest margin).
+- **One-step greedy label, not an optimal plan.** Cheap and exactly scoreable by lookup; it can disagree with the best 2-step plan.
+
+## D12. Textbook-rules baseline (src/analogft/baselines.py)
+Compute each normalized shortfall in the same units as the spec distance (`shortfall.py`, tested to sum to spec_distance), take the largest, apply one fixed move; if that move is unavailable (clipped), try the next-largest. Rules, each written before looking at any result:
+- **PM low -> cc_up.** Raising Cc moves the dominant pole lower and splits the poles further, which is the standard first fix for phase margin.
+- **UGF low -> w_in_up.** UGF is about gm1/(2 pi Cc), and gm1 grows with the input pair's W/L.
+- **Gain low -> l_load_up.** Longer load devices raise their output resistance (lambda ~ 1/L in our models, D1), which raises stage-1 gain.
+- **Power high -> ibias_down.** All branch currents scale with Ibias.
+- **Unsaturated device** (a device counts 1.0, like one 10 dB of gain): M1, M2, M5 (pair and tail) -> w_in_up (more W/L means smaller Vgs1 and more tail headroom); M3, M4 (PMOS load) -> l_load_down (more W/L, smaller Vov); M6 -> w_cs_up (smaller Vov6); M7, M8 (NMOS mirror) -> ibias_down (smaller Vov). Devices are tried in name order.
+- Deliberately simple: one rule per shortfall, no look-ahead, no knowledge of magnitudes or side effects. It is the bar a model must clear to show it learned more than a designer's first instinct.
+
+## D13. Baseline scoring conventions (src/analogft/evaluation.py)
+- An invalid or unavailable pick is a no-move: wrong for top-1/top-3/improve-rate and improvement 0 for regret (regret = best improvement - picked improvement). Alternative (penalize like the worst action) would make invalid outputs look even worse; no-move is the simplest meaningful rule and matches what an agent that ignores a bad output would do.
+- **Random** is the exact expectation over each state's available actions, not a sample. **Majority** returns the most frequent train label and is invalid when that action is unavailable at a state.
+- Regret is averaged over all states, including those where no action improves.
+
+## D14. Prompt and response format (src/analogft/prompting.py)
+- One user message holds spec, current metrics, failing specs with shortfalls, unsaturated devices only, knobs in engineering units (action knobs, then the 4 fixed knobs, since they affect gain and headroom) and the available actions with their neutral descriptions. System prompt carries the output contract. Median 258 tokens for the user message and 330 with the system prompt (4 chars per token), max 342, under the 350 target.
+- Reply is one JSON line `{"action", "reason"}`. The reason is generated from data: largest normalized shortfall (spec value vs current) plus the simulated effect of the chosen action on that metric and on the other metric that moved the most (if it moved by at least 0.03 distance units). Longest observed: 16 words.
+- Deviation from the plan's signature: `format_response(action, before, after, spec)` takes the spec as a fourth argument because "largest shortfall" is undefined without it.
+- `parse_response` accepts a JSON object anywhere in the text (code fences, chatter) and requires a string `action` field. **Truncated or malformed JSON is invalid ("no_json")**, even if an action id is readable. Trade-off: stricter than needed for the agent but keeps "valid-output rate" a real measurement of format discipline.
+
+## D15. Splits and files
+- Split by target (group_id) 80/10/10 with a seeded permutation: 480/60/60 targets. All states and episodes of a target stay together; asserted in the build and tested.
+- Pilot output goes to data/phase2_pilot/ (never pushed); the real dataset to data/phase2/. All settings live in configs/phase2.json (seed 0).
+- Starts are simulated in one batch for all targets (an earlier version created a process pool per target, which was far slower).
