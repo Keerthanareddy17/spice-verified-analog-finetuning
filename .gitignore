@@ -13,6 +13,8 @@ dist/
 # Secrets and private context
 .env
 CLAUDE.md
+.claude/
+notes/
 # Simulation cache (local only)
 .simcache/
 # Model artifacts
