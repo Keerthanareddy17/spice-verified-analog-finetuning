@@ -1,27 +1,44 @@
 # SPICE-Verified Fine-Tuning and Reinforcement Learning for Analog Amplifier Design
 
-A small specialist language model looks at a failing two-stage op-amp design and decides what to change next. It is trained and graded only by a circuit simulator (ngspice), then used inside an agent that repairs designs step by step.
+A small language model that looks at a failing two-stage op-amp design and chooses the next design change. It is trained and graded only by a circuit simulator (ngspice) and then used inside an agent that repairs designs step by step, with tracing, failure detection, recovery paths and one round of expert iteration.
+
 **Research question:** can a small, privately runnable model, trained only on simulator feedback, choose better design moves than a large general model?
 
-## Roadmap
-| Phase | Scope | Status |
+## Results at a glance
+
+**Single-step move selection** (150 held-out states; tie-aware top-1, 95% bootstrap CI):
+
+| method | top-1 | improvement rate | mean regret |
+|---|---|---|---|
+| Qwen2.5-0.5B, LoRA fine-tuned on simulator labels | **0.693** [0.620, 0.760] | 0.873 | **0.056** |
+| gpt-oss-120b (Groq, medium reasoning) | 0.513 [0.433, 0.593] | 0.827 | 0.103 |
+| textbook rules | 0.400 [0.320, 0.480] | 0.880 | 0.073 |
+| Qwen2.5-0.5B, untrained | 0.187 [0.127, 0.253] | 0.273 | 0.211 |
+
+**Multi-step agent** (174 unseen test episodes, 8-step budget, success = the simulator reports every spec met):
+
+| agent | success (95% CI) | simulations / episode |
 |---|---|---|
-| 1 | Simulation environment: netlist, simulator, actions, specs, batch + cache, Drive sync | **Done** |
-| 2 | Simulator-labeled dataset: rank all actions per failing start state, split by start design | **Done** |
-| 3 | Eval harness, LoRA fine-tune of a small open model, baselines (large model via Groq) | **Done** |
-| 4 | Multi-step agent, traces, failure taxonomy and recovery, one round of expert iteration | **Done** |
+| textbook rules | 0.759 [0.690, 0.822] | 4.0 |
+| fine-tuned Qwen2.5-0.5B | 0.782 [0.718, 0.845] | 2.3 |
+| fine-tuned + recovery paths | 0.902 [0.856, 0.948] | 2.9 |
+| after one round of expert iteration + recovery | **0.943** [0.908, 0.977] | 2.7 |
 
-## Phase 1 results
-Circuit: Miller-compensated two-stage op-amp (NMOS diff pair, PMOS mirror, PMOS common-source second stage), CL = 2 pF, VDD = 1.8 V. Open-loop AC is measured with a DC-feedback loop-break (see `docs/DECISIONS.md`).
+Recovery adds +0.121 (paired 95% CI [+0.075, +0.167]); expert iteration adds +0.040 ([+0.006, +0.075]). Loop events fall from 194 to 82 to 47 across the three fine-tuned agents. Caveats are listed under [Limitations](#limitations).
 
-Hand-sized nominal design (simulated): **DC gain 74.2 dB, UGF 27.9 MHz, phase margin 67.8°, power 0.44 mW, all 8 devices saturated.**
-Throughput: about 165 simulations/s uncached on a MacBook Air M4 (9 workers).
+## Architecture
 
-Cc sweep (more Cc: more phase margin, lower UGF):
+
+
+Pipeline: the **simulator** (netlist template, Level-1 device models, ngspice, typed failures, parallel cached batches) defines a scalar spec distance. The **dataset builder** creates achievable specs, failing start states and, for every state, simulates all 14 actions to rank and label them. **LoRA SFT** (TRL + PEFT, loss on the reply only) trains a 0.5B model on those labels. An **evaluation harness** scores any model by lookup into the precomputed action outcomes. The **agent** applies the model repeatedly on live states, simulating every move, with a JSONL trace and a failure taxonomy; **recovery paths** react to invalid output, loops, failed simulations and stalls. **Expert iteration** retrains on the agent's own simulator-verified successes.
+
+## Phase 1: simulation environment
+
+Miller-compensated two-stage op-amp (NMOS differential pair, PMOS mirror load, PMOS common-source second stage), CL = 2 pF, VDD = 1.8 V. Open-loop AC is measured with a DC-feedback loop break ([D3](docs/DECISIONS.md)). The hand-sized nominal design simulates to **74.2 dB gain, 27.9 MHz UGF, 67.8 deg phase margin, 0.44 mW, all 8 devices saturated**. Throughput is about 165 simulations/s uncached on a MacBook Air M4 (9 workers).
 
 ![Cc sweep](results/figures/cc_sweep_bode.png)
 
-What each action does to the nominal design (from `results/action_effects.csv`):
+Effect of each action on the nominal design (`results/action_effects.csv`):
 
 | action | Δgain (dB) | ΔPM (deg) | UGF ratio | power ratio |
 |---|---|---|---|---|
@@ -33,11 +50,15 @@ What each action does to the nominal design (from `results/action_effects.csv`):
 | w_cs_up / w_cs_down | +1.1 / -1.1 | +1.4 / -1.7 | 1.00 / 1.00 | 1.00 / 1.00 |
 | out_ratio_up / out_ratio_down | -1.1 / +1.1 | +1.6 / -2.0 | 1.00 / 1.00 | 1.24 / 0.81 |
 
-## Phase 3 results: LoRA fine-tune vs a large model
+## Phase 2: simulator-labeled dataset
 
-**Setup.** Qwen2.5-0.5B-Instruct with a LoRA adapter (r=16, all attention and MLP projections), trained 2 epochs (366 steps, 19.3 min on a free T4, fp16) on 2926 simulator-labeled states. The loss is on the reply only. Every method sees the same prompt and is scored by lookup into the simulator's precomputed outcome of every action, so no model output is ever re-simulated. Intervals are 95% bootstrap CIs over states. Full details are in [docs/DECISIONS.md](docs/DECISIONS.md) (D16-D24) and the numbers in [results/phase3_results.md](results/phase3_results.md).
+600 random designs that meet their own (slackened) specs become targets; start states are targets pushed 2-6 action-lattice moves away; every available action is simulated from each state, ranked by spec-distance improvement and labeled (ties broken by the largest margin beyond the spec). Result: **3679 labeled states** from 1758 start states and 600 targets, 55,236 simulations, split 2926 / 378 / 375 by target (no leakage). See [docs/DATASET_CARD.md](docs/DATASET_CARD.md).
 
-**Main comparison: 150-example eval subset** (a fixed, step-stratified sample of the test split, so the Groq models could be run on exactly the same states):
+## Phase 3: LoRA fine-tuning vs a large model
+
+Qwen2.5-0.5B-Instruct with a LoRA adapter (r=16, all attention and MLP projections, 8.8M trainable parameters), 2 epochs (366 steps, 19.3 min on a free T4, fp16), trained on 2926 labeled states with loss on the reply only. Every method receives the same prompt and is scored by lookup into the simulator's outcome for every action, so no model output is re-simulated. Intervals are 95% bootstrap CIs over states.
+
+**Eval subset** (150 test examples, stratified by step; the Groq models were run on exactly these):
 
 | method | n | valid | top-1 tie-aware (95% CI) | top-1 exact | top-3 | improvement rate (95% CI) | mean regret (95% CI) |
 |---|---|---|---|---|---|---|---|
@@ -49,7 +70,7 @@ What each action does to the nominal design (from `results/action_effects.csv`):
 | Qwen2.5-0.5B base model (untrained) | 150 | 1.000 | 0.187 [0.127, 0.253] | 0.167 | 0.213 | 0.273 [0.200, 0.347] | 0.211 [0.168, 0.259] |
 | Qwen2.5-0.5B fine-tuned | 150 | 1.000 | 0.693 [0.620, 0.760] | 0.627 | 0.740 | 0.873 [0.820, 0.920] | 0.056 [0.033, 0.082] |
 
-**Full test split** (375 examples; the Groq models were only run on the subset):
+**Full test split** (375 examples; Groq models were run on the subset only):
 
 | method | n | valid | top-1 tie-aware (95% CI) | top-1 exact | top-3 | improvement rate (95% CI) | mean regret (95% CI) |
 |---|---|---|---|---|---|---|---|
@@ -59,48 +80,17 @@ What each action does to the nominal design (from `results/action_effects.csv`):
 | Qwen2.5-0.5B base model (untrained) | 375 | 1.000 | 0.173 [0.133, 0.211] | 0.157 | 0.213 | 0.261 [0.216, 0.307] | 0.203 [0.175, 0.235] |
 | Qwen2.5-0.5B fine-tuned | 375 | 1.000 | 0.717 [0.669, 0.763] | 0.661 | 0.803 | 0.893 [0.861, 0.923] | 0.042 [0.028, 0.059] |
 
-Training curve (loss on reply tokens; the reply is a JSON action plus a short generated reason, so the loss mixes action choice with reason text):
-
 ![Loss curve](results/figures/phase3_loss_curve.png)
 
-**Where each method wins or loses** (subset; top-1 / improvement rate / regret). By step, the fine-tuned model is strongest on first-look designs (step 0: 0.75 / 0.93 / 0.028) and weakest at step 3 (0.36 / 0.64 / 0.187, but only n=11). By largest shortfall, it is clearly ahead on UGF (0.71 top-1 vs 0.23 for textbook rules) and gain (0.78 vs 0.22), and behind textbook rules on phase margin (0.56 vs 0.75). The full breakdown is in `results/phase3_results.md`.
+By step, the fine-tuned model is strongest on first-look designs (step 0: top-1 0.75, regret 0.028) and weakest at step 3 (0.36, n=11). By largest shortfall it leads on UGF (0.71 vs 0.23 for the rules) and gain (0.78 vs 0.22) and trails the rules on phase margin (0.56 vs 0.75); the full breakdown is in [results/phase3_results.md](results/phase3_results.md).
 
-**Interpretation.** On this task a 0.5B model fine-tuned only on simulator labels picks the best move far more often than the untrained model (0.693 vs 0.187 tie-aware top-1) and more often than gpt-oss-120b (0.513) and the textbook rules (0.400); its mean regret (0.056) is the lowest of all methods. The gain is in choosing the *best* move, not in choosing a *helpful* one: its improvement rate (0.873) is statistically tied with textbook rules (0.880, CIs overlap almost entirely), which already find a move that helps about 88% of the time. The margin over gpt-oss-120b is clear but not huge at n=150 (top-1 CIs [0.620, 0.760] vs [0.433, 0.593] just separate; the regret CIs still overlap), and the full-test result (0.717, n=375) points the same way. Caveats: the evaluation is in-distribution (the same circuit and spec generator, with unseen designs, split by target), the task is single-step (Phase 4 tests the multi-step agent), and the circuit uses Level-1 device models, so this shows the approach works against a simulator, not that these numbers hold on silicon-accurate models or other topologies.
+The fine-tuned model selects the best move far more often than the untrained model and than gpt-oss-120b, with the lowest regret. Its improvement rate is statistically tied with the textbook rules (0.873 vs 0.880): the gain is in choosing the best move, not a helpful move. The margin over gpt-oss-120b at n=150 is clear but modest (top-1 intervals just separate, regret intervals overlap); the full-test result points the same way.
 
-## Phase 4 results: a multi-step agent with recovery, and one round of expert iteration
+## Phase 4: multi-step agent, recovery and expert iteration
 
-**Architecture**
+The Phase 3 model is used as an agent. From a failing design it takes up to 8 steps; at each step the prompt (same format as training) is built from the current design, the model picks one action, the harness applies it and ngspice simulates it, and the episode ends when every spec passes. Agent memory (best design, visited designs, blocked actions) lives in the harness, so prompts stay in the training distribution. Every step and episode is written to JSONL with a failure taxonomy (INVALID_OUTPUT, UNAVAILABLE_ACTION, SIM_FAILURE, LOOP, NO_PROGRESS, BUDGET_EXHAUSTED) and four recovery paths (re-ask then rules fallback; block the looping action and re-ask; roll back on simulation failure; roll back to the best design on no progress). Test set: 174 failing designs from 60 unseen targets. Full tables: [results/phase4_results.md](results/phase4_results.md); readable traces: [results/phase4/examples.md](results/phase4/examples.md).
 
-```mermaid
-flowchart LR
-  subgraph SIM["Simulator (ngspice)"]
-    NL["netlist template + Level-1 models"] --> NG["ngspice run"] --> MET["gain, UGF, PM, power, saturation"] --> SD["spec_distance = reward and ranking signal"]
-  end
-  subgraph DATA["Phase 2: dataset builder"]
-    TG["random achievable targets + specs"] --> ST["failing start states"] --> LB["simulate ALL 14 actions, rank, label (margin tie-break)"]
-  end
-  SIM --> DATA
-  LB --> JS[("data/phase2 JSONL, committed to git")]
-  JS --> FT["Phase 3: LoRA fine-tune, Qwen2.5-0.5B (Colab T4)"]
-  FT --> AD["adapter"]
-  subgraph AG["Phase 4: agent harness (max 8 steps)"]
-    PR["prompt from CURRENT state"] --> POL["policy: fine-tuned model, Groq, rules, random"]
-    POL --> AP["apply action"] --> SM["simulate"]
-    SM --> CK{"spec met?"}
-    CK -- "no" --> PR
-    MEM["memory in the harness: best design, visited, blocked actions"] -.-> PR
-    REC["recovery: re-ask, rules fallback, block, rollback"] -.-> POL
-  end
-  AD --> POL
-  SIM --> SM
-  AG --> TR["tracing: one JSONL record per step and episode, failure taxonomy"]
-  AG -- "sampled rollouts on training episodes" --> EI["expert iteration: keep simulator-verified improving steps"]
-  EI --> FT2["continue LoRA from the adapter (1 epoch, lr 1e-4)"] --> AD
-```
-
-**Setup.** The same Qwen2.5-0.5B LoRA model from Phase 3 is now used as an agent: from a failing design it takes up to 8 steps; each step it sees the same prompt format it was trained on (built from the *current* design), picks one action, the harness applies it and ngspice simulates it, and the episode ends when the simulator says every spec passes. The agent's memory (best design so far, visited designs, blocked actions) lives in the harness, so prompts stay in the training distribution. Every step and episode is traced to JSONL with a failure taxonomy (INVALID_OUTPUT, UNAVAILABLE_ACTION, SIM_FAILURE, LOOP, NO_PROGRESS, BUDGET_EXHAUSTED) and four recovery paths (re-ask then rules fallback, block-and-re-ask on loops, rollback on simulation failure, rollback to the best design on no progress). Test set: 174 failing designs from 60 unseen targets. Full tables are in [results/phase4_results.md](results/phase4_results.md); two readable traces are in [results/phase4/examples.md](results/phase4/examples.md).
-
-**Main table: all 174 test episodes, 8-step budget** (95% bootstrap CIs; "steps / reference path" compares steps used with the number of inverse lattice moves that built each start state):
+**All test episodes** ("steps / reference path" compares steps used with the number of inverse lattice moves that built each start state):
 
 | agent | n | success (95% CI) | median steps to success | steps / reference path (solved) | mean final distance | sims / episode | invalid-output rate | recoveries / episode |
 |---|---|---|---|---|---|---|---|---|
@@ -114,7 +104,7 @@ flowchart LR
 
 ![Success vs step budget](results/figures/phase4_success_vs_budget.png)
 
-**Recovery ablation** (same episodes, paired bootstrap CI on the difference):
+**Recovery ablation** (same episodes; paired bootstrap CI on the difference):
 
 | comparison | n | success: no recovery | success: recovery | paired difference (95% CI) |
 |---|---|---|---|---|
@@ -124,36 +114,75 @@ flowchart LR
 
 **Expert iteration, before vs after** (agent with recovery): success 0.902 [0.856, 0.948] -> 0.943 [0.908, 0.977], a paired difference of +0.040 [+0.006, +0.075]. The round sampled 1408 rollouts (704 train episodes x 2, temperature 0.8) and the simulator marked 1293 as solved (91.8%). From those, 3002 improving steps the model chose itself were candidates; 1196 were exact duplicates of Phase 2 examples and were dropped, leaving **1579 new examples** (303 at step 0, 1276 at later steps) added to the 2926 original ones for one epoch at lr 1e-4 from the Phase 3 adapter (15.4 min on the T4). The single-step test eval barely moved (top-1 0.717 -> 0.731, CIs overlap; regret 0.042 -> 0.040), so there was no regression, and most of the agent gain is in recovering from its own mistakes, not in better first moves.
 
-**What the failure classes show.** The fine-tuned model without recovery has *no* invalid outputs but **194 LOOP events**: it is stateless, so when a move takes it back to a design it has already seen, it picks the same move again. Blocking the looping action and re-asking (a one-line change to the action list) cuts LOOP events to **82**, and success rises from 0.782 to 0.902. After expert iteration LOOP events fall again to **47**, budget-exhausted episodes from 38 to 13 to 8: training on its own successful trajectories made the model loop less, not just score better.
+**Failure classes.** The fine-tuned model without recovery produces no invalid outputs but 194 LOOP events: it is stateless, so after a move returns it to a design it has already seen it repeats the same move. Blocking the looping action and re-asking reduces LOOP events to 82 and raises success from 0.782 to 0.902. After expert iteration they fall to 47, and budget-exhausted episodes fall from 38 to 13 to 8.
 
-**Efficiency vs the textbook rules.** The fine-tuned agent with recovery solves 0.902 of episodes using 2.9 simulations per episode, against 0.759 for rules at 4.0 (3.6 with recovery). Per solved episode it needs 2.45 simulations vs 2.85 for rules, and it uses about 0.45 steps per reference-path move (rules: 0.53). Without recovery the fine-tuned agent is statistically tied with the rules (0.782 vs 0.759, paired difference +0.023 [-0.034, +0.080]); with recovery it is clearly ahead (+0.144 [+0.075, +0.207]), and after expert iteration +0.184 [+0.121, +0.253] (the agent solves 35 episodes the rules miss, and misses 3 the rules solve). The whole Colab run took about 34 minutes of compute on a free T4 (agents 4.4 min, rollouts 12.4 min, RL training 15.4 min, evals 2.1 min).
+**Efficiency against the textbook rules.** The fine-tuned agent with recovery solves 0.902 of episodes with 2.9 simulations per episode, against 0.759 at 4.0 for the rules (3.6 with recovery). Per solved episode it needs 2.45 simulations against 2.85, and about 0.45 steps per reference-path move (rules: 0.53). Without recovery it is statistically tied with the rules (paired +0.023 [-0.034, +0.080]); with recovery it is ahead (+0.144 [+0.075, +0.207]), and after expert iteration +0.184 [+0.121, +0.253]: it solves 35 episodes the rules miss and misses 3 that the rules solve. The Colab run took about 34 minutes of compute on a free T4 (agents 4.4 min, rollouts 12.4 min, RL training 15.4 min, evaluation 2.1 min).
 
-**Caveats.**
-- **In-distribution:** test episodes are unseen designs, but they come from the same circuit and spec generator as the training data, and every start state is guaranteed solvable (it is at most 6 inverse moves from a design that meets its spec). A real design problem may have no solution in this action set.
-- **Small, one-round RL gain with no negative signal:** +0.040 is real but small (the lower CI bound is +0.006). It is filtered behavior cloning on one round of the model's own successes, with no negative signal from failures, no value function and no second round. The rollouts were on *training* episodes, whose step-0 states the model had already been trained on, so their 91.8% success is optimistic; that is also why 1196 candidate steps were exact duplicates.
-- **No gpt-oss agent result:** the gpt-oss-120b agent was stopped by Groq's 200,000 tokens/day cap and a lock-step run that aborts scores nothing, so no number is reported (its 58 cached responses allow a resume). The qwen3.8-27b agent was run instead on a fixed 30-episode subset: 0.600 [0.433, 0.767] without recovery and 0.833 [0.700, 0.967] with recovery, against 0.933 for the fine-tuned agent with recovery on the same 30 episodes. With n=30 the intervals overlap, so this pilot is inconclusive.
-- **Re-asks do not consume steps:** a recovery re-ask happens inside a step, so the recovering agents get slightly more model calls per step than the budget implies; policy calls per episode and simulations per episode are reported to keep the comparison honest.
-- **Level-1 device models, one topology, nominal corner:** the circuit is a single two-stage Miller op-amp simulated with simplified (Level-1) devices at one temperature and supply, so these success rates say nothing yet about silicon-accurate models, other topologies or PVT corners.
-
-**What I would do next.**
-1. Resume the gpt-oss-120b agent on the 30 cached episodes when the daily cap resets, and extend to all 174.
-2. A second and third expert-iteration round, or a policy-gradient step that also learns from failures (for example reward-weighted or DPO-style pairs from good and bad moves of the same state).
-3. Put the agent's recent history into the prompt and retrain, to see whether the model can learn loop-avoidance itself instead of relying on the harness.
-4. Evaluate out of distribution: unseen spec ranges, other topologies, PVT corners and a BSIM model card.
-5. Make the action set continuous (sized moves) and add a cost term for simulations used.
+**Large-model agent (pilot, 30 episodes).** The gpt-oss-120b agent was stopped by Groq's 200,000 tokens/day cap before completing and has no result (see D29). A qwen3.8-27b agent on a fixed 30-episode subset scored 0.600 [0.433, 0.767] without recovery and 0.833 [0.700, 0.967] with recovery, against 0.933 for the fine-tuned agent with recovery on the same episodes; with n=30 the intervals overlap and the comparison is inconclusive.
 
 ## Limitations
-Devices are SPICE Level-1 models (lambda ∝ 1/L), not a BSIM/PTM card (the PTM site was unreachable when this was built). They show the right trends but ignore short-channel effects, so absolute numbers are not silicon-accurate.
 
-## Run Phase 1
-Requires Python ≥ 3.10 and ngspice (`brew install ngspice`).
+- **Device models:** SPICE Level-1 (lambda proportional to 1/L), not a BSIM/PTM card; trends are right but absolute numbers are not silicon-accurate. One topology, one load and supply, nominal temperature only.
+- **Distribution:** test designs are unseen, but they come from the same circuit and spec generator as the training data, and every start state is solvable by construction (at most 6 inverse moves from a design that meets its spec). A real design problem may have no solution in this action set.
+- **Labels:** one-step greedy and dependent on the hand-weighted spec distance (D7), not optimal multi-step plans.
+- **Expert iteration:** one round, filtered behavior cloning with no negative signal from failures and no value function. The +0.040 gain is small (lower CI bound +0.006), and the rollouts used training episodes whose start states were in supervised training, so their 91.8% success is optimistic.
+- **Large-model comparison:** the gpt-oss agent has no result (daily cap). The 30-episode qwen3.8-27b pilot is inconclusive. The single-step gpt-oss baseline is a zero-shot prompt; few-shot or tool-using baselines could narrow the gap.
+- **Recovery accounting:** re-asks do not consume steps, so recovering agents make more model calls per step than the budget implies; policy calls and simulations per episode are reported alongside success.
+
+## Reproducing the results
+
+**Environment.** Python 3.10 or newer and ngspice (`brew install ngspice` or `apt-get install ngspice`).
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 pytest
-python scripts/simulate_one.py      # nominal design report
-python scripts/explore_cc.py        # Cc sweep: table, figure, CSV
-python scripts/explore_actions.py   # what each of the 14 actions does
-# data/phase2 is committed to git; Colab results come back as a zip: python scripts/import_results_zip.py <zip>
 ```
-Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md). `notebooks/00_colab_bootstrap.ipynb` checks Colab's ngspice against the Mac's.
+
+**Phase 1-2 (local, no GPU).**
+
+```bash
+python scripts/simulate_one.py                                   # nominal design report
+python scripts/explore_cc.py && python scripts/explore_actions.py
+python scripts/build_dataset.py --config configs/phase2.json     # about 55k simulations
+python scripts/relabel_dataset.py                                # margin tie-break (D16)
+python scripts/run_baselines.py && python scripts/make_dataset_card.py
+python scripts/write_manifest.py data
+```
+
+The Phase 2 dataset is tracked in `data/phase2/`, so these steps are only needed to rebuild it.
+
+**Phase 3-4 baselines (local).** `GROQ_API_KEY` is read from `.env` (see `.env.example`).
+
+```bash
+python scripts/run_groq.py --model openai/gpt-oss-120b           # single-step baseline on the eval subset
+python scripts/run_agent.py --policy rules                       # also: --policy random, --policy groq
+python scripts/smoke_agent.py                                    # failure classes and recovery paths on mock policies
+```
+
+**GPU runs (Colab T4).** `notebooks/00_colab_bootstrap.ipynb` checks the environment; `notebooks/01_finetune_eval.ipynb` fine-tunes and evaluates the Phase 3 model; `notebooks/02_agent_rl.ipynb` runs the agent evaluations and one round of expert iteration. The notebooks pull code and data from this repository, install `requirements-colab.txt`, write run artifacts to `runs/` on a mounted Drive path and finish by writing a weights-free results archive.
+
+**Tables and figures.** Unpack an archive with `python scripts/import_results_zip.py <archive>`, then run `python scripts/make_results_table.py` (Phase 3) or `python scripts/make_phase4_table.py` (Phase 4), which write `results/phase3_results.md` and `results/phase4_results.md`.
+
+Design decisions are recorded in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Repository structure
+
+```
+src/analogft/
+  circuit/        design knobs, Level-1 models, netlist template, ngspice runner, parallel batch simulation
+  actions.py      the 14 design moves     specs.py / shortfall.py   spec check, distance, margins
+  dataset.py      targets, start states, all-action labeling, splits    relabel.py   tie-break
+  prompting.py    prompt/response format and parser (shared by all stages)
+  evaluation.py   lookup scoring, CIs     baselines.py   random / majority / textbook rules
+  predict.py      Groq and Hugging Face (+LoRA) backends     harness.py   evaluation subset, saved predictions
+  finetune.py     LoRA SFT with TRL/PEFT, base vs fine-tuned evaluation
+  agent.py        multi-step loop, failure detection, recovery paths     tracing.py   taxonomy and JSONL records
+  policies.py     rules / random / LLM policies     expert_iteration.py   RL dataset from verified successes
+  agent_eval.py, report.py, report4.py   metrics and tables     mock.py   fault injection for tests
+  paths.py, drive_check.py, resultszip.py   paths, manifests, weights-free results archives
+scripts/          command-line entry points (dataset, baselines, Groq, agents, tables, smoke tests)
+notebooks/        Colab bootstrap, Phase 3 fine-tuning, Phase 4 agent and expert iteration
+data/             Phase 2 dataset (tracked)     results/   tables, metrics, figures, traces (tracked)
+docs/             decision log and dataset card     tests/   unit and integration tests
+```
