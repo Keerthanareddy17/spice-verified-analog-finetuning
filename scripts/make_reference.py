@@ -1,4 +1,4 @@
-"""Write results/reference_nominal.json: the Mac's answer for the nominal design.
+"""Write results/reference_nominal.json: the local reference result for the nominal design.
 
 Colab's bootstrap notebook re-simulates the same design and must agree.
 """

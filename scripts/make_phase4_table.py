@@ -1,6 +1,6 @@
 """Build results/phase4_results.md, results/phase4/examples.md and the budget figure from agent runs.
 
-Reads agent runs from results/phase4/<agent>/ (Mac agents, committed) and runs/phase4/agents/<agent>/ (Colab agents,
+Reads agent runs from results/phase4/<agent>/ (locally run agents, committed) and runs/phase4/agents/<agent>/ (Colab agents,
 after scripts/import_results_zip.py). Colab agents are copied into results/phase4/ so they get committed.
 Usage: python scripts/make_phase4_table.py
 """
@@ -15,7 +15,7 @@ from analogft.report4 import (AGENTS, RESULTS4, agent_dirs, agent_table, budget_
 
 def main() -> None:
     dirs = agent_dirs()
-    for name, d in dirs.items():  # keep the Colab agents next to the Mac ones, committed
+    for name, d in dirs.items():  # keep the Colab agents next to the locally run ones, committed
         if d.parent.name == "agents" and not (RESULTS4 / name).exists():
             (RESULTS4 / name).mkdir(parents=True, exist_ok=True)
             for f in ("steps.jsonl", "episodes.jsonl", "metrics.json"):

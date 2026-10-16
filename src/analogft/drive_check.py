@@ -1,7 +1,7 @@
-"""Manifest building and verification for folders synced through Google Drive.
+"""Manifest building and verification for data folders.
 
-The Mac writes manifest.json before pushing; Colab calls verify_manifest to be
-sure Drive for desktop has finished uploading before it trusts the data.
+A producer writes manifest.json (file names, sizes, row counts); a consumer (e.g. a Colab run)
+calls verify_manifest to confirm that the files on disk are complete before using them.
 """
 from __future__ import annotations
 
@@ -56,5 +56,5 @@ def verify_manifest(folder: Path, raise_on_error: bool = False) -> tuple[bool, l
             elif p.stat().st_size != entry["bytes"]:
                 problems.append(f"size mismatch: {name} ({p.stat().st_size} != {entry['bytes']} bytes)")
     if problems and raise_on_error:
-        raise DriveUploadIncomplete("Drive upload not finished yet, wait and re-run. " + "; ".join(problems[:5]))
+        raise DriveUploadIncomplete("Files do not match manifest.json (incomplete copy or upload not finished yet): " + "; ".join(problems[:5]))
     return not problems, problems

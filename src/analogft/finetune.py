@@ -4,7 +4,7 @@ Used by notebooks/01_finetune_eval.ipynb and by the local smoke test (scripts/sm
 
 Run layout (all under runs/phase3/<run_name>/):
     config.json            the settings used
-    checkpoints/           resumable Trainer checkpoints (large, never pulled to the Mac)
+    checkpoints/           resumable Trainer checkpoints (large; excluded from results archives)
     adapter/               final LoRA adapter
     logs/train_log.json    loss history;  figures/loss_curve.png
     eval/<base|finetuned>/<val|test|subset>/{predictions.jsonl,metrics.json}
@@ -197,7 +197,7 @@ def train(cfg: FTConfig, log=print) -> dict:
 
     trainer = _make_trainer(cfg, _load_model(cfg, want_fp16), tok, train_ds, val_ds, want_fp16)
     if want_fp16 and cfg.precision == "auto" and not _finite_first_loss(trainer):
-        log("!! fp16 loss is not finite on the first batch: falling back to fp32")
+        log("fp16 loss is not finite on the first batch; falling back to fp32")
         want_fp16 = False
         trainer = _make_trainer(cfg, _load_model(cfg, False), tok, train_ds, val_ds, False)
     n_train = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)

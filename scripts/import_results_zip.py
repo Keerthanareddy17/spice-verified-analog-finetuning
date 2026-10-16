@@ -1,5 +1,5 @@
-"""Unpack a results zip downloaded from Drive into runs/phase3/<run_name>/ .
-If the browser already unpacked it into a folder named after the run, pass that folder instead.
+"""Unpack a weights-free results archive (zip, or the folder it was extracted to) into runs/.
+Phase 3 archives unpack to runs/phase3/<run_name>/, Phase 4 archives to runs/phase4/.
 
 Usage: python scripts/import_results_zip.py ~/Downloads/qwen25_05b_lora_results.zip   (Phase 3)
        python scripts/import_results_zip.py ~/Downloads/phase4_results.zip              (Phase 4)

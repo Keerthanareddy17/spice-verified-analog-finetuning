@@ -1,4 +1,4 @@
-"""Small zip of a run's results (no checkpoints, no adapter) for moving Colab output to the Mac by download.
+"""Small zip of a run's results (no checkpoints, no adapter) for moving run output off the Colab Drive by download.
 
 Zip layout: <run_name>/{config.json, eval/..., logs/..., figures/...}, so unpacking into runs/phase3/ recreates the run folder.
 """

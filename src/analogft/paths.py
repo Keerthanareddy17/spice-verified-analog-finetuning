@@ -4,7 +4,6 @@ Nothing else in the repo should hardcode an absolute path.
 """
 from __future__ import annotations
 
-import glob
 import os
 from pathlib import Path
 
@@ -34,16 +33,6 @@ def _load_dotenv() -> None:
         pass
 
 
-def _find_drive_local_dir() -> Path | None:
-    """Locate an optional Google Drive for desktop copy of the project folder (Mac only; not needed anymore)."""
-    override = os.environ.get("DRIVE_LOCAL_DIR")
-    if override:
-        return Path(override).expanduser()
-    pattern = str(Path.home() / "Library/CloudStorage/GoogleDrive-*/My Drive" / PROJECT_NAME)
-    hits = sorted(glob.glob(pattern))
-    return Path(hits[0]) if hits else None
-
-
 def _resolve_storage_root() -> Path:
     override = os.environ.get("ANALOGFT_STORAGE_ROOT")
     if override:
@@ -66,9 +55,8 @@ RUNS_DIR: Path = STORAGE_ROOT / "runs"
 RESULTS_DIR: Path = STORAGE_ROOT / "results"
 FIGURES_DIR: Path = RESULTS_DIR / "figures"
 MODELS_DIR: Path = REPO_ROOT / "models"
-DRIVE_LOCAL_DIR: Path | None = None if IS_COLAB else _find_drive_local_dir()
 
-# Local-only simulation cache: never synced to Drive, never committed.
+# Simulation cache: local to the machine, not shared and not committed.
 CACHE_DIR: Path = (Path(os.environ.get("ANALOGFT_CACHE_DIR", "")).expanduser()
                    if os.environ.get("ANALOGFT_CACHE_DIR")
                    else (Path("/content/.simcache") if IS_COLAB else REPO_ROOT / ".simcache"))

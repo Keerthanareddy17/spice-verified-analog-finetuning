@@ -1,4 +1,4 @@
-"""Run an agent on the TEST episodes on the Mac (no GPU needed): random, textbook rules, or Groq.
+"""Run an agent on the TEST episodes locally (no GPU needed): random, textbook rules, or Groq.
 
 Usage:
   python scripts/run_agent.py --policy rules  [--recovery on|off|both]
