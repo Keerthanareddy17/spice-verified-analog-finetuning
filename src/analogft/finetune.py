@@ -53,10 +53,13 @@ class FTConfig:
     eval_batch_size: int = 32
     max_new_tokens: int = 64
     root: str | None = None           # override of the runs/ parent (smoke test)
+    phase: str = "phase3"             # runs/<phase>/<run_name>/ (expert iteration uses phase4)
+    init_adapter: str | None = None   # continue training this LoRA adapter instead of a fresh one (expert iteration)
+    train_file: str | None = None     # jsonl of chat records to train on instead of data/<data_name>/train.jsonl
 
     @property
     def run_dir(self) -> Path:
-        base = Path(self.root) if self.root else paths.RUNS_DIR / "phase3"
+        base = Path(self.root) if self.root else paths.RUNS_DIR / self.phase
         return base / self.run_name
 
 
@@ -72,7 +75,8 @@ def to_prompt_completion(rec: dict) -> dict:
 def load_sft_data(cfg: FTConfig):
     from datasets import Dataset
     d = paths.DATA_DIR / cfg.data_name
-    train, val = read_jsonl(d / "train.jsonl"), read_jsonl(d / "val.jsonl")
+    train = read_jsonl(Path(cfg.train_file)) if cfg.train_file else read_jsonl(d / "train.jsonl")
+    val = read_jsonl(d / "val.jsonl")
     if cfg.max_train_examples:
         train = train[: cfg.max_train_examples]
     if cfg.max_eval_examples:
@@ -114,6 +118,10 @@ def _make_trainer(cfg: FTConfig, model, tok, train_ds, val_ds, use_fp16: bool):
     peft_cfg = LoraConfig(r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout, bias="none",
                           task_type="CAUSAL_LM",
                           target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
+    if cfg.init_adapter:                    # expert iteration: keep training the Phase 3 adapter
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, cfg.init_adapter, is_trainable=True)
+        peft_cfg = None
     return SFTTrainer(model=model, args=args, train_dataset=train_ds, eval_dataset=val_ds,
                       processing_class=tok, peft_config=peft_cfg)
 
@@ -192,6 +200,9 @@ def train(cfg: FTConfig, log=print) -> dict:
         log("!! fp16 loss is not finite on the first batch: falling back to fp32")
         want_fp16 = False
         trainer = _make_trainer(cfg, _load_model(cfg, False), tok, train_ds, val_ds, False)
+    n_train = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
+    log(f"trainable parameters: {n_train:,}")
+    assert n_train > 0, "no trainable parameters (adapter loaded frozen?)"
     mask_info = show_masking(trainer, tok, log=log)
     trainer.add_callback(TimingCallback(20, log))
 

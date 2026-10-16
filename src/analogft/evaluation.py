@@ -125,3 +125,13 @@ def breakdown(records: list[dict], rows: list[dict], by: str) -> dict:
         g = groups[key]
         out[key] = {"n": len(g), **{c: _mean([x[c] for x in g]) for c in SCORE_KEYS.values()}}
     return out
+
+
+def bootstrap_mean_ci(values: list[float], n_boot: int = 2000, seed: int = 0) -> list[float]:
+    """Percentile 95% CI of the mean (resampling items)."""
+    n = len(values)
+    if not n:
+        return [math.nan, math.nan]
+    rng = random.Random(seed)
+    means = sorted(sum(values[rng.randrange(n)] for _ in range(n)) / n for _ in range(n_boot))
+    return [means[int(0.025 * n_boot)], means[min(n_boot - 1, int(0.975 * n_boot))]]

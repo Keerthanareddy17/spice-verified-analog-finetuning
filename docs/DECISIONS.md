@@ -162,3 +162,44 @@ Compute each normalized shortfall in the same units as the spec distance (`short
 - **Reading it honestly:** the gain over rules is in picking the best move, not a helpful move. Single step, in-distribution (same circuit and spec generator), Level-1 models. Weakest cells: step 3 (n=11) and phase-margin-limited states, where textbook rules still win top-1.
 - **D24 is the record of the torchao fix and the fail-early environment check;** the run above used it (the notebook is committed with its outputs as the record of the run).
 - **Results transport:** the browser had auto-extracted the results zip into a folder, so `import_results_zip.py` also accepts that folder (`import_results_dir`, only config/eval/logs/figures copied). The loss curve is copied to `results/figures/phase3_loss_curve.png` so the README can show it (runs/ is not committed).
+
+# Phase 4 decisions
+
+## D26. Agent loop (src/analogft/agent.py)
+- **Episode** = (spec, start design) from `data/phase2/episodes_<split>.jsonl`. Up to 8 steps: build the prompt from the CURRENT state with `prompting.format_prompt` (exactly what the model was trained on), ask the policy for one action, apply it, simulate, compute `spec_distance`; stop at distance 0 (spec met, the simulator is the judge).
+- **Memory lives in the harness, not the prompt** (best design so far, visited designs, blocked actions, last action per state). Options: put history in the prompt (richer, but out of the training distribution, so the fine-tuned model would see unseen formats) or keep the prompt identical. Chosen: identical prompts; the only way memory reaches the model is a shorter action list (blocked actions are removed) and, on a re-ask, one appended sentence.
+- **Lock-step batching:** all active episodes take step k together: ONE batched policy call and ONE batched simulation (`SimPool`, a persistent spawn pool; creating a pool per step would dominate the time). Trade-off: one episode's slow answer holds up the batch, fine on a T4 where batching is what makes generation fast.
+- **Reference path length** = sum of |k| of the episode's `lattice_k` (inverse moves from the start design to its target, from the Phase 2 construction), reported next to steps used. It is a known solution length, not a minimum: the agent may do better or worse.
+- **Policies share one interface** (`policies.py`: `choose(states, notes) -> Prediction`): textbook rules, random, any `predict.Backend` (Groq, HF + LoRA, mock). Sampling temperature is a property of the HF backend.
+- **Counting:** `sims` per episode = new designs simulated (a revisited design reuses its stored result at no cost). A step with an invalid output and no usable fallback is a wasted step (no simulation) and still uses budget.
+
+## D27. Failure taxonomy (src/analogft/tracing.py)
+INVALID_OUTPUT (unparseable, unknown action id, API error, or a rules policy with no move), UNAVAILABLE_ACTION (a real id that is not in this state's list, which includes blocked actions), SIM_FAILURE (the new design has no complete metrics), LOOP (the move returns to a design already visited in this episode), NO_PROGRESS (3 consecutive steps without improving the best distance; wasted steps, failed simulations and loops all count as no progress), BUDGET_EXHAUSTED (budget used up, once per unsolved episode). Detected in BOTH modes (so the no-recovery agent is diagnosed too); only the recovery flag decides whether the harness reacts.
+- **Loop identity:** designs are compared by the rounded log of every knob (4 decimals), because x1.3 then /1.3 is not bit-exact in floating point (a test covers it).
+
+## D28. Recovery paths (one flag: `recovery=True`)
+- **INVALID_OUTPUT / UNAVAILABLE_ACTION:** re-ask once with the error sentence appended to the user message; if still invalid, fall back to the textbook-rules action for that state (logged as `fallback_rules`; if rules also have no move the episode gives up).
+- **LOOP:** block the looping action at that state, remove it from the Actions list and re-ask (no note). If the re-ask is invalid, fall back to rules; if it loops again it is accepted (NO_PROGRESS will catch a real cycle).
+- **SIM_FAILURE:** do not adopt the failed design (rollback = stay at the previous design) and block that action at that state.
+- **NO_PROGRESS:** roll back to the best design so far and block the action last taken there.
+- **Without recovery** the agent just keeps going: an invalid output wastes the step, a loop is taken, a failed simulation is adopted as the new state.
+- **Budget accounting:** recoveries cost extra policy calls and sometimes simulations, but a re-ask inside a step does not consume an extra step of the 8-step budget. Trade-off: this favors the recovering agent slightly, which is why the number of policy calls and sims per episode are reported too. The ablation is paired (same episodes) with a bootstrap CI on the difference.
+- **Mock tests:** `mock.MockBackend` (invalid JSON, unknown id, unavailable id, oscillating cc_up/cc_down) and `mock.FaultySim` (every n-th simulation fails) make every class and path fire on real ngspice episodes (`scripts/smoke_agent.py`, `tests/test_agent.py`).
+
+## D29. Which agents are compared, and the Groq subset
+- Random and textbook rules (with and without recovery) on all 174 test episodes on the Mac; gpt-oss-120b on a fixed seeded subset of 30 test episodes (`results/phase4/groq_episode_ids.json`), because the free tier's 8,000 tokens/min and daily token cap cannot afford 174 episodes x several steps of a reasoning model. The Groq cache is keyed by a hash of the whole prompt, so the identical step-0 prompts of Phase 3 are reused for free and an interrupted run resumes at no cost. Every other agent is also re-scored on exactly the episodes the Groq agent finished. If the cap stops the run, n is whatever finished: nothing is estimated.
+- Fine-tuned Qwen (no recovery / recovery) and the after-expert-iteration Qwen (recovery) run on Colab.
+
+## D30. Expert iteration, one round (src/analogft/expert_iteration.py)
+- **Rollouts:** the Phase 3 model with recovery on, sampling at temperature 0.8, k=2 rollouts per training episode over a seeded subset (704 of 1408 episodes by default, so rollouts fit the 60-minute Colab budget; all settings are in the notebook's config cell).
+- **Reward = the simulator.** Keep only rollouts that reached the spec. From those keep only steps that (a) improved spec_distance (no detours), (b) were the model's own choice (no rules-fallback steps), (c) are not an exact duplicate of a Phase 2 training example (a duplicate would only double-weight what it already knows). One label per prompt: the largest improvement.
+- **Mix** the new (prompt -> action) examples, written with the same reply format (`format_response` from the stored before/after metrics), into the original Phase 2 train set to avoid forgetting; continue training from the Phase 3 adapter for 1 epoch at lr 1e-4 (same LoRA config, same fp16 handling; `FTConfig.init_adapter` / `train_file`).
+- **Why this is RL:** it is policy improvement with a verifiable reward from the environment: sample from the current policy, score trajectories by the simulator, increase the probability of the actions on successful trajectories (filtered behavior cloning, as in expert iteration / ReST / RFT). It is not policy-gradient RL: there is no value function, no negative signal from failures, and only one round.
+- **Honest expectation:** training on its own successes mostly reinforces moves it already makes (greedy ~ the mode of its own distribution), so gains are likely small; the useful new data are later-step states and alternative good moves. We report before/after with paired CIs either way.
+
+## D31. Results transport for Phase 4
+Same route as D23: notebook 02 writes `runs/phase4_results.zip` to Drive (agent traces + metrics, RL dataset stats, per-chunk rollout episode records, RL eval/logs/figures; never weights, `rl_train.jsonl` or the large per-step rollout states, tested). `import_results_zip.py` detects the `phase4/` layout; `make_phase4_table.py` copies the Colab agents into `results/phase4/` so they are committed next to the Mac agents.
+
+### D29 observed (Groq agents, 30-episode subset)
+- gpt-oss-120b did NOT complete: the daily token cap stopped it ("Limit 200000, Used 198046, Requested 2399") after 58 uncached calls, and a lock-step run that aborts scores nothing, so no gpt-oss agent number is reported (nothing estimated). Its 58 responses are cached in `results/phase4/groq_openai_gpt-oss-120b_recovery/cache.jsonl`; after the cap resets, rerunning `python scripts/run_agent.py --policy groq --model openai/gpt-oss-120b --n-episodes 30 --recovery on` resumes from the cache.
+- qwen/qwen3.8-27b (default mode, ~540 tokens/call, separate daily budget) completed both modes on the same 30 episodes and is the large-model agent in the tables.

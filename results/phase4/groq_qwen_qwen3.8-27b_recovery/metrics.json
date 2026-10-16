@@ -1,0 +1,57 @@
+{
+ "run_id": "groq_qwen_qwen3.8-27b_recovery",
+ "policy": "groq:qwen/qwen3.8-27b",
+ "recovery": true,
+ "samples": 1,
+ "n_episodes": 30,
+ "success_rate": 0.8333333333333334,
+ "success_ci": [
+  0.7,
+  0.9666666666666667
+ ],
+ "outcomes": {
+  "solved": 25,
+  "budget_exhausted": 3,
+  "gave_up": 2
+ },
+ "median_steps_to_success": 3,
+ "mean_steps_to_success": 3.48,
+ "mean_reference_len_solved": 5.44,
+ "mean_reference_len_all": 5.5,
+ "steps_over_reference": 0.6397058823529411,
+ "mean_final_distance": 0.034047266666666666,
+ "final_distance_ci": [
+  0.0035885,
+  0.08420343333333333
+ ],
+ "mean_best_distance": 0.0262018,
+ "mean_sims": 3.9,
+ "invalid_output_rate": 0.008403361344537815,
+ "recoveries_per_episode": 0.8,
+ "recoveries": {
+  "reask": 1,
+  "fallback_rules": 2,
+  "loop_block_reask": 15,
+  "sim_rollback": 0,
+  "progress_rollback": 6
+ },
+ "failure_classes": {
+  "INVALID_OUTPUT": 1,
+  "UNAVAILABLE_ACTION": 2,
+  "SIM_FAILURE": 0,
+  "LOOP": 15,
+  "NO_PROGRESS": 6,
+  "BUDGET_EXHAUSTED": 3
+ },
+ "success_by_budget": {
+  "1": 0.26666666666666666,
+  "2": 0.3,
+  "3": 0.4666666666666667,
+  "4": 0.5333333333333333,
+  "5": 0.6666666666666666,
+  "6": 0.7333333333333333,
+  "7": 0.8,
+  "8": 0.8333333333333334
+ },
+ "mean_tokens_per_step": 528.7563025210084
+}

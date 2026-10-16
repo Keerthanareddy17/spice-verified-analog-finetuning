@@ -1,0 +1,57 @@
+{
+ "run_id": "random_norecovery",
+ "policy": "random",
+ "recovery": false,
+ "samples": 1,
+ "n_episodes": 174,
+ "success_rate": 0.28160919540229884,
+ "success_ci": [
+  0.21839080459770116,
+  0.3505747126436782
+ ],
+ "outcomes": {
+  "solved": 49,
+  "budget_exhausted": 125,
+  "gave_up": 0
+ },
+ "median_steps_to_success": 3,
+ "mean_steps_to_success": 3.3877551020408165,
+ "mean_reference_len_solved": 5.081632653061225,
+ "mean_reference_len_all": 5.390804597701149,
+ "steps_over_reference": 0.6666666666666666,
+ "mean_final_distance": 0.5638276609195403,
+ "final_distance_ci": [
+  0.4597448908045977,
+  0.6784084540229884
+ ],
+ "mean_best_distance": 0.2713648678160919,
+ "mean_sims": 6.2298850574712645,
+ "invalid_output_rate": 0.0,
+ "recoveries_per_episode": 0.0,
+ "recoveries": {
+  "reask": 0,
+  "fallback_rules": 0,
+  "loop_block_reask": 0,
+  "sim_rollback": 0,
+  "progress_rollback": 0
+ },
+ "failure_classes": {
+  "INVALID_OUTPUT": 0,
+  "UNAVAILABLE_ACTION": 0,
+  "SIM_FAILURE": 0,
+  "LOOP": 82,
+  "NO_PROGRESS": 206,
+  "BUDGET_EXHAUSTED": 125
+ },
+ "success_by_budget": {
+  "1": 0.05747126436781609,
+  "2": 0.11494252873563218,
+  "3": 0.14942528735632185,
+  "4": 0.20114942528735633,
+  "5": 0.2413793103448276,
+  "6": 0.26436781609195403,
+  "7": 0.27011494252873564,
+  "8": 0.28160919540229884
+ },
+ "mean_tokens_per_step": null
+}

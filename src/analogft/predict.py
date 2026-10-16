@@ -21,9 +21,18 @@ from .prompting import SYSTEM_PROMPT, format_prompt, parse_response
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
-def build_messages(state: dict) -> list[dict]:
-    """The exact system + user messages every backend sees (same for all models)."""
-    return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": format_prompt(state)}]
+def build_messages(state: dict, note: str | None = None) -> list[dict]:
+    """The exact system + user messages every backend sees (same for all models).
+
+    `note` (agent re-asks only) is appended to the user message, e.g. the error of the previous answer.
+    """
+    user = format_prompt(state) + (f"\n\n{note}" if note else "")
+    return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
+
+
+def messages_key(messages: list[dict]) -> str:
+    """Stable cache key of a prompt (same prompt -> same key, so deterministic models are cached by content)."""
+    return hashlib.sha1("\x1f".join(m["content"] for m in messages).encode()).hexdigest()[:20]
 
 
 @dataclass
@@ -52,10 +61,12 @@ class Predictor:
     def __init__(self, backend: Backend):
         self.backend = backend
 
-    def predict_batch(self, records: list[dict], keys: list[str] | None = None) -> list[Prediction]:
-        """`keys` identify examples for caching (default: record ids)."""
+    def predict_batch(self, records: list[dict], keys: list[str] | None = None,
+                      notes: list[str | None] | None = None) -> list[Prediction]:
+        """`keys` identify examples for caching (default: record ids). `notes` are optional per-state re-ask notes."""
         keys = keys or [r["id"] for r in records]
-        outs = self.backend.generate([build_messages(r) for r in records], keys)
+        notes = notes or [None] * len(records)
+        outs = self.backend.generate([build_messages(r, n) for r, n in zip(records, notes)], keys)
         preds = []
         for r, (text, meta) in zip(records, outs):
             if meta.get("api_error"):
@@ -197,7 +208,8 @@ class HFBackend(Backend):
     """A local causal LM (optionally with a LoRA adapter): batched greedy decoding via the chat template."""
 
     def __init__(self, model_name: str, adapter_path: str | Path | None = None, max_new_tokens: int = 64,
-                 batch_size: int = 16, device: str | None = None, dtype: str | None = None):
+                 batch_size: int = 16, device: str | None = None, dtype: str | None = None,
+                 temperature: float = 0.0, seed: int = 0):
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
         self.torch = torch
@@ -214,6 +226,8 @@ class HFBackend(Backend):
             self.model = PeftModel.from_pretrained(self.model, str(adapter_path)).to(self.device)
         self.model.eval()
         self.max_new_tokens, self.batch_size = max_new_tokens, batch_size
+        self.temperature = temperature      # 0 = greedy; > 0 = sampling (expert iteration rollouts)
+        torch.manual_seed(seed)
         self.name = f"hf:{model_name}" + (f"+{Path(adapter_path).name}" if adapter_path else "")
 
     def generate(self, batch, keys=None):
@@ -223,8 +237,10 @@ class HFBackend(Backend):
         for i in range(0, len(texts), self.batch_size):
             enc = self.tok(texts[i:i + self.batch_size], return_tensors="pt", padding=True).to(self.device)
             with torch.no_grad():
-                gen = self.model.generate(**enc, max_new_tokens=self.max_new_tokens, do_sample=False,
-                                          pad_token_id=self.tok.pad_token_id)
+                sample = {"do_sample": True, "temperature": self.temperature, "top_p": 1.0, "top_k": 0} \
+                    if self.temperature > 0 else {"do_sample": False}
+                gen = self.model.generate(**enc, max_new_tokens=self.max_new_tokens, pad_token_id=self.tok.pad_token_id,
+                                          **sample)
             new = gen[:, enc["input_ids"].shape[1]:]
             for row in new:
                 n_tok = int((row != self.tok.pad_token_id).sum())

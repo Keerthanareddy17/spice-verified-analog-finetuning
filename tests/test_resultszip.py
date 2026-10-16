@@ -37,3 +37,22 @@ def test_import_dir(tmp_path):
         (src / rel).write_text("x")
     files = import_results_dir(src, tmp_path / "runs")
     assert len(files) == 2 and not (tmp_path / "runs" / "r2" / "adapter").exists()
+
+
+def test_phase4_zip_roundtrip_excludes_weights_and_full_rollouts(tmp_path):
+    from analogft.resultszip import import_phase4_zip, is_phase4_zip, make_phase4_zip
+    p4 = tmp_path / "phase4"
+    keep = ["agents/ft_recovery/steps.jsonl", "agents/ft_recovery/episodes.jsonl", "agents/ft_recovery/metrics.json",
+            "rl_dataset/rl_train.stats.json", "rollouts/chunk_00/episodes.jsonl", "figures/a.png",
+            "qwen25_05b_rl/config.json", "qwen25_05b_rl/eval/finetuned/test/metrics.json", "qwen25_05b_rl/logs/t.json"]
+    drop = ["rl_dataset/rl_train.jsonl", "rollouts/chunk_00/steps.jsonl", "qwen25_05b_rl/adapter/w.safetensors",
+            "qwen25_05b_rl/checkpoints/checkpoint-5/optimizer.pt", "agents/ft_recovery/extra.bin"]
+    for rel in keep + drop:
+        (p4 / rel).parent.mkdir(parents=True, exist_ok=True)
+        (p4 / rel).write_text("x")
+    z = make_phase4_zip(p4)
+    assert is_phase4_zip(z)
+    names = set(zipfile.ZipFile(z).namelist())
+    assert names == {f"phase4/{k}" for k in keep}
+    files = import_phase4_zip(z, tmp_path / "runs")
+    assert len(files) == len(keep) and (tmp_path / "runs/phase4/agents/ft_recovery/metrics.json").exists()
